@@ -1,29 +1,53 @@
+import tkinter as tk
+from tkinter import filedialog
+import rawpy
+from PIL import Image
 import os
-import cv2
-from tkinter import Tk
-from tkinter.filedialog import askopenfilenames
+import subprocess
 
-# Create a Tkinter root window (hidden)
-root = Tk()
-root.withdraw()
+def desqueeze_image(file_path):
+    # Load the DNG image using rawpy
+    with rawpy.imread(file_path) as raw:
+        # Use camera white balance for post-processing
+        rgb_array = raw.postprocess(use_camera_wb=True)
 
-# Open a file dialog to select DNG files
-file_paths = askopenfilenames(filetypes=[("DNG Files", "*.dng")])
+    # Convert to PIL image
+    img = Image.fromarray(rgb_array)
 
-# Process each selected DNG file
-for file_path in file_paths:
-    # Read the DNG file
-    image = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
+    # Calculate the new width for the desqueezed image
+    original_width, original_height = img.size
+    new_width = int(original_width * 1.5)
 
-    # Stretch the image horizontally by 1.5x
-    stretched_image = cv2.resize(image, None, fx=1.5, fy=1, interpolation=cv2.INTER_LINEAR)
+    # Resize the image to desqueeze it
+    desqueezed_img = img.resize((new_width, original_height))
 
-    # Generate the output file path with the "-desqueezed" suffix
-    directory, filename = os.path.split(file_path)
-    name, ext = os.path.splitext(filename)
-    output_path = os.path.join(directory, f"{name}-desqueezed{ext}")
+    # Create the output file path with the suffix "-desqueezed"
+    base, ext = os.path.splitext(file_path)
+    output_path = f"{base}-desqueezed.tiff"
 
-    # Save the stretched image as a new DNG file
-    cv2.imwrite(output_path, stretched_image)
+    # Save the desqueezed image as a TIFF file
+    desqueezed_img.save(output_path, format='TIFF')
 
-print("Processing completed.")
+    # Copy metadata from the original file to the new file, ignoring minor errors
+    subprocess.run(['exiftool', '-TagsFromFile', file_path, '-all:all', '-overwrite_original', '-m', output_path])
+
+    print(f"Saved desqueezed image to: {output_path}")
+
+def main():
+    # Create a Tkinter root window (it won't be shown)
+    root = tk.Tk()
+    root.withdraw()  # Hide the root window
+
+    # Open a file dialog to select DNG files
+    file_paths = filedialog.askopenfilenames(
+        title="Select DNG files",
+        filetypes=[("DNG files", "*.dng")]
+    )
+
+    # Process each selected file
+    for file_path in file_paths:
+        desqueeze_image(file_path)
+
+    print("Complete")
+if __name__ == "__main__":
+    main()
